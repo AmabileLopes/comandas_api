@@ -1,0 +1,37 @@
+### Verbo GET – listar todos
+GET http://localhost:8000/funcionario/ HTTP/1.1
+
+### Verbo GET – listar um
+GET http://localhost:8000/funcionario/10 HTTP/1.1
+
+### Verbo POST – adicionar
+POST http://127.0.0.1:8000/funcionario/ HTTP/1.1
+Content-Type: application/json
+
+{
+    "nome": "Amabile",
+    "matricula": "123456",
+    "cpf": "123.456.789-00",
+    "telefone": "(11) 98765-4321",
+    "grupo": 1,
+    "senha": "senha123"
+}
+
+### Atualizar funcionário
+
+PUT http://127.0.0.1:8000/funcionario/2/ HTTP/1.1
+Content-Type: application/json
+
+{
+    "nome": "Amabile",
+    "matricula": "123456",
+    "cpf": "123.456.789-00",
+    "telefone": "(11) 98765-4321",
+    "grupo": 1,
+    "senha": "novaSenha123"
+}
+
+###Deletar funcionário
+DELETE http://127.0.0.1:8000/funcionario/3/ HTTP/1.1
+
+##Amabile Vitória Lopes Ouriques

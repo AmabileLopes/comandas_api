@@ -1,0 +1,34 @@
+### Verbo GET – listar todos
+GET http://localhost:8000/produto/ HTTP/1.1
+
+### Verbo GET – listar um
+GET http://localhost:8000/produto/10 HTTP/1.1
+
+### Verbo POST – adicionar
+POST http://127.0.0.1:8000/produto/ HTTP/1.1
+Content-Type: application/json
+
+{
+    "nome": "Lenha",
+    "descricao": "Lenha de eucalipto",
+    "foto": "bytes",
+    "valor_unitario": 10.0
+}
+
+
+### Atualizar produto
+PUT http://127.0.0.1:8000/produto/2/ HTTP/1.1
+Content-Type: application/json
+
+{
+    "nome": "Lenha",
+    "descricao": "Lenha de eucalipto",
+    "foto": "bytes",
+    "valor_unitario": 15.0
+}
+
+###Deletar produto
+DELETE http://127.0.0.1:8000/produto/3/ HTTP/1.1
+
+
+##Amabile Vitória Lopes Ouriques
