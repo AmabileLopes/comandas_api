@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from domain.schemas.AuthSchema import FuncionarioAuth
 
 
 # Domain Schemas
@@ -11,14 +12,16 @@ from domain.schemas.FuncionarioSchema import (
 )
 
 # Infra
+from infra.dependencies import get_current_active_user, require_group
 from infra.orm.FuncionarioModel import FuncionarioDB
 from infra.database import get_db
+from infra.security import get_password_hash
 
 router = APIRouter()
 
 # Criar as rotas/endpoints: GET, POST, PUT, DELETE
 @router.get("/funcionario/", response_model=List[FuncionarioResponse], tags=["Funcionário"], status_code=status.HTTP_200_OK)
-async def get_funcionario(db: Session = Depends(get_db)):
+async def get_funcionario(db: Session = Depends(get_db),current_user: FuncionarioAuth = Depends(require_group([1]))):
     """Retorna todos os funcionários"""
     try:
         funcionarios = db.query(FuncionarioDB).all()
@@ -30,7 +33,7 @@ async def get_funcionario(db: Session = Depends(get_db)):
 )
 
 @router.get("/funcionario/{id}", response_model=FuncionarioResponse, tags=["Funcionário"], status_code=status.HTTP_200_OK)
-async def get_funcionario(id: int, db: Session = Depends(get_db)):
+async def get_funcionario(id: int, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(get_current_active_user)):
     """Retorna um funcionário específico"""
     try:
         funcionario = db.query(FuncionarioDB).filter(FuncionarioDB.id == id).first()
@@ -47,7 +50,7 @@ async def get_funcionario(id: int, db: Session = Depends(get_db)):
         )
 
 @router.post("/funcionario/", response_model=FuncionarioResponse, status_code=status.HTTP_201_CREATED, tags=["Funcionário"])
-async def post_funcionario(funcionario_data: FuncionarioCreate, db: Session = Depends(get_db)):
+async def post_funcionario(funcionario_data: FuncionarioCreate, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
     """Cria um novo funcionário"""
     try:
         # Verifica se já existe funcionário com este CPF
@@ -57,6 +60,9 @@ async def post_funcionario(funcionario_data: FuncionarioCreate, db: Session = De
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Já existe um funcionário com este CPF"
             )
+        # Hash da senha
+        hashed_password = get_password_hash(funcionario_data.senha)
+            
         # Cria o novo funcionário
         novo_funcionario = FuncionarioDB(
             id=None, # Será auto-incrementado
@@ -65,7 +71,7 @@ async def post_funcionario(funcionario_data: FuncionarioCreate, db: Session = De
             cpf=funcionario_data.cpf,
             telefone=funcionario_data.telefone,
             grupo=funcionario_data.grupo,
-            senha=funcionario_data.senha
+            senha=hashed_password
         )
 
         db.add(novo_funcionario)
@@ -83,7 +89,7 @@ async def post_funcionario(funcionario_data: FuncionarioCreate, db: Session = De
         )
 
 @router.put("/funcionario/{id}", response_model=FuncionarioResponse, tags=["Funcionário"], status_code=status.HTTP_200_OK)
-async def put_funcionario(id: int, funcionario_data: FuncionarioUpdate, db: Session = Depends(get_db)):
+async def put_funcionario(id: int, funcionario_data: FuncionarioUpdate, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
    
     """Atualiza um funcionário existente"""
     try:
@@ -102,6 +108,9 @@ async def put_funcionario(id: int, funcionario_data: FuncionarioUpdate, db: Sess
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST, detail="Já existe um funcionário com este CPF"
                 )
+            # Hash da senha se fornecida nova senha
+            if funcionario_data.senha:
+                funcionario_data.senha = get_password_hash(funcionario_data.senha)
             
         # Atualiza apenas os campos fornecidos
         update_data = funcionario_data.model_dump(exclude_unset=True)
@@ -123,7 +132,7 @@ async def put_funcionario(id: int, funcionario_data: FuncionarioUpdate, db: Sess
         )
 
 @router.delete("/funcionario/{id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Funcionário"], summary="Remover funcionário")
-async def delete_funcionario(id: int, db: Session = Depends(get_db)):
+async def delete_funcionario(id: int, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
     """Remove um funcionário"""
     try:
         funcionario = db.query(FuncionarioDB).filter(FuncionarioDB.id == id).first()
