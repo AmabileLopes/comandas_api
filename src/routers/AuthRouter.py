@@ -1,20 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from infra.rate_limit import limiter, get_rate_limit
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from domain.schemas.AuthSchema import LoginRequest, TokenResponse, RefreshTokenRequest, FuncionarioAuth
+
+from infra.rate_limit import limiter, get_rate_limit
+from slowapi.errors import RateLimitExceeded
 
 from infra.orm.FuncionarioModel import FuncionarioDB
 from infra.database import get_db
 from infra.security import verify_password, create_access_token, create_refresh_token, verify_refresh_token
 from infra.dependencies import get_current_active_user
 
+from services import AuditoriaService
 from settings import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 
 router = APIRouter()
 
 @router.post("/auth/login", response_model=TokenResponse, tags=["Autenticação"], summary="Login de funcionário - pública - retorna access e refresh token")
-async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_db)):
     """
     Realiza login do funcionário e retorna access token e refresh token
     - **cpf**: CPF do funcionário - **senha**: Senha do funcionário
@@ -48,6 +54,15 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                 "id": funcionario.id, # ID do funcionário
                 "grupo": funcionario.grupo
             }
+        )
+        
+        # Registrar auditoria de login
+        AuditoriaService.registrar_acao(
+            db=db,
+            funcionario_id=funcionario.id,
+            acao="LOGIN",
+            recurso="AUTH",
+            request=request
         )
 
         return TokenResponse(
@@ -99,6 +114,7 @@ async def refresh_token(refresh_data: RefreshTokenRequest, db: Session = Depends
                 "grupo": funcionario.grupo
             }
         )
+        
         return TokenResponse(
             access_token=access_token,
             refresh_token=new_refresh_token,
