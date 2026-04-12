@@ -32,6 +32,6 @@ Content-Type: application/json
 }
 
 ###Deletar cliente
-DELETE http://127.0.0.1:8000/cliente/3/ HTTP/1.1
+DELETE http://127.0.0.1:8000/cliente/1/ HTTP/1.1
 
 ##Amabile Vitória Lopes Ouriques

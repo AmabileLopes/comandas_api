@@ -22,4 +22,11 @@ class ProdutoResponse(BaseModel):
     descricao: str
     foto: bytes
     valor_unitario: float
+
+class ProdutoResponseOcultado(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    nome: str
+    descricao: str
+    foto: Optional[bytes] = None
+
     ##Amabile Vitória Lopes Ouriques
