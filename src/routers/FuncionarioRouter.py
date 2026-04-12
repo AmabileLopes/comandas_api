@@ -147,6 +147,7 @@ async def put_funcionario(request: Request, id: int, funcionario_data: Funcionar
 
         db.commit()
         db.refresh(funcionario)
+
         # Depois de tudo executado e antes do return, registra a ação na auditoria
         AuditoriaService.registrar_acao(
             db=db,
@@ -201,8 +202,8 @@ async def delete_funcionario(request: Request, id: int, db: Session = Depends(ge
     except Exception as e:
         db.rollback()
         raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=f"Erro ao deletar funcionário: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao deletar funcionário: {str(e)}"
         )
 
 #Amabile Vitória Lopes Ouriques

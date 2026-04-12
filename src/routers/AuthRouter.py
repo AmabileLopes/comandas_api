@@ -1,6 +1,6 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from infra.rate_limit import limiter, get_rate_limit
-from slowapi.errors import RateLimitExceeded
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -14,8 +14,9 @@ from infra.database import get_db
 from infra.security import verify_password, create_access_token, create_refresh_token, verify_refresh_token
 from infra.dependencies import get_current_active_user
 
-from services import AuditoriaService
+from services.AuditoriaService import AuditoriaService
 from settings import ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+
 
 router = APIRouter()
 
@@ -62,8 +63,12 @@ async def login(request: Request, login_data: LoginRequest, db: Session = Depend
             funcionario_id=funcionario.id,
             acao="LOGIN",
             recurso="AUTH",
+            recurso_id=None,
+            dados_antigos=None,
+            dados_novos={"cpf": funcionario.cpf},
             request=request
         )
+        
 
         return TokenResponse(
             access_token=access_token,
