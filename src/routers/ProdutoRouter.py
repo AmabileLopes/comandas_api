@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from services.AuditoriaService import AuditoriaService
-from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import asc, select
+from typing import List, Optional
 # Domain Schemas
 from domain.schemas.ProdutoSchema import ProdutoCreate, ProdutoResponseOcultado, ProdutoUpdate, ProdutoResponse
 from domain.schemas.AuthSchema import FuncionarioAuth
@@ -12,17 +13,40 @@ from slowapi.errors import RateLimitExceeded
 #Infra
 from infra.dependencies import get_current_active_user, require_group
 from infra.orm.ProdutoModel import ProdutoDB
-from infra.database import get_db
+from infra.database import get_async_db
 
 router = APIRouter()
 
 # Criar as rotas/endpoints: GET, POST, PUT, DELETE
 @router.get("/produto/", response_model=List[ProdutoResponse], tags=["Produto"], status_code=status.HTTP_200_OK)
 @limiter.limit(get_rate_limit("moderate"))
-async def get_produto(request: Request, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(get_current_active_user)):
+async def get_produto(
+    request: Request, 
+    skip: int = Query(0, ge=0, description="Número de registros para pular"),
+    limit: int = Query(100, ge=1, le=1000, description="Limite de registros"),
+    id: Optional[int] = Query(None, description="Filtrar por ID"),
+    nome: Optional[str] = Query(None, description="Filtrar por nome"),
+    descricao: Optional[str] = Query(None, description="Filtrar por descrição"),
+    valor_unitario: Optional[float] = Query(None, description="Filtrar por valor unitário mínimo"),
+    db: AsyncSession = Depends(get_async_db), 
+    current_user: FuncionarioAuth = Depends(get_current_active_user)
+):
+    
     """Retorna todos os produtos"""
     try:
-        produtos = db.query(ProdutoDB).all()
+        query = select(ProdutoDB)
+        if id is not None:
+            query = query.where(ProdutoDB.id == id)
+        if nome is not None:
+            query = query.where(ProdutoDB.nome.ilike(f"%{nome}%"))
+        if descricao is not None:
+            query = query.where(ProdutoDB.descricao.ilike(f"%{descricao}%"))
+        if valor_unitario is not None:
+            query = query.where(ProdutoDB.valor_unitario >= valor_unitario)
+
+        # Aplicar paginação
+        result = await db.execute(query.offset(skip).limit(limit))
+        produtos = result.scalars().all()
         return produtos
     
     except Exception as e:
@@ -31,12 +55,31 @@ async def get_produto(request: Request, db: Session = Depends(get_db), current_u
             detail=f"Erro ao buscar produtos: {str(e)}"
         )
 
-@router.get("/produtoocultado/", response_model=List[ProdutoResponseOcultado], tags=["Produto"], status_code=status.HTTP_200_OK)
+@router.get("/publico/", response_model=List[ProdutoResponseOcultado], tags=["Produto"], status_code=status.HTTP_200_OK)
 @limiter.limit(get_rate_limit("moderate"))
-async def get_produtoocultado(request: Request, db: Session = Depends(get_db)):
+async def get_publico(
+    request: Request, 
+    skip: int = Query(0, ge=0, description="Número de registros para pular"),
+    limit: int = Query(100, ge=1, le=1000, description="Limite de registros"),
+    nome: Optional[str] = Query(None, description="Filtrar por nome"),
+    descricao: Optional[str] = Query(None, description="Filtrar por descrição"),
+    valor_unitario: Optional[float] = Query(None, description="Filtrar por valor unitário mínimo"),
+    db: AsyncSession = Depends(get_async_db)):
+   
     """Retorna todos os produtos - SEm ID e Valor"""
     try:
-        produtos = db.query(ProdutoDB).all()
+        query = select(ProdutoDB)
+        if nome is not None:
+            query = query.where(ProdutoDB.nome.ilike(f"%{nome}%"))
+        if descricao is not None:
+            query = query.where(ProdutoDB.descricao.ilike(f"%{descricao}%"))
+        if valor_unitario is not None:
+            query = query.where(ProdutoDB.valor_unitario >= valor_unitario)
+
+        # Aplicar paginação
+        result = await db.execute(query.offset(skip).limit(limit))
+        produtos = result.scalars().all()
+
         return produtos
     
     except Exception as e:
@@ -47,12 +90,17 @@ async def get_produtoocultado(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/produto/{id}", response_model=ProdutoResponse, tags=["Produto"], status_code=status.HTTP_200_OK)
 @limiter.limit(get_rate_limit("moderate"))
-async def get_produto(id: int, request: Request, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(get_current_active_user)):
+async def get_produto(
+    id: int, 
+    request: Request, 
+    db: AsyncSession = Depends(get_async_db), 
+    current_user: FuncionarioAuth = Depends(get_current_active_user)
+):
     
     """Retorna um produto específico pelo ID"""
     try:
-        produto = db.query(ProdutoDB).filter(ProdutoDB.id == id).first()
-        
+        result = await db.execute(select(ProdutoDB).where(ProdutoDB.id == id))
+        produto = result.scalar_one_or_none()
         if not produto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -70,11 +118,18 @@ async def get_produto(id: int, request: Request, db: Session = Depends(get_db), 
     
 @router.post("/produto/", response_model=ProdutoResponse, tags=["Produto"], status_code=status.HTTP_201_CREATED)
 @limiter.limit(get_rate_limit("moderate"))
-async def post_produto(request: Request, produto_data: ProdutoCreate, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
+async def post_produto(
+    request: Request, 
+    produto_data: ProdutoCreate, 
+    db: AsyncSession = Depends(get_async_db), 
+    current_user: FuncionarioAuth = Depends(require_group([1]))
+):
+    
     """Cria um novo produto"""
     try:
         # Verifica se já existe produto com este nome
-        existing_produto = db.query(ProdutoDB).filter(ProdutoDB.nome == produto_data.nome).first()
+        result = await db.execute(select(ProdutoDB).where(ProdutoDB.nome == produto_data.nome))
+        existing_produto = result.scalar_one_or_none()
 
         if existing_produto:
             raise HTTPException(
@@ -90,8 +145,8 @@ async def post_produto(request: Request, produto_data: ProdutoCreate, db: Sessio
         )
 
         db.add(novo_produto)
-        db.commit()
-        db.refresh(novo_produto)
+        await db.commit()
+        await db.refresh(novo_produto)
 
         # dados novos
         dados_novos = {
@@ -102,7 +157,7 @@ async def post_produto(request: Request, produto_data: ProdutoCreate, db: Sessio
             "foto": novo_produto.foto
         }
 
-        AuditoriaService.registrar_acao(
+        await AuditoriaService.registrar_acao(
             db=db,
             funcionario_id=current_user.id,
             acao="CREATE",
@@ -118,7 +173,7 @@ async def post_produto(request: Request, produto_data: ProdutoCreate, db: Sessio
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
              detail=f"Erro ao criar produto: {str(e)}"
@@ -126,10 +181,11 @@ async def post_produto(request: Request, produto_data: ProdutoCreate, db: Sessio
         
 @router.put("/produto/{id}",response_model=ProdutoResponse, tags=["Produto"], status_code=status.HTTP_200_OK)
 @limiter.limit(get_rate_limit("moderate"))
-async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
+async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db: AsyncSession = Depends(get_async_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
     """Atualiza um produto existente"""
     try:
-        produto = db.query(ProdutoDB).filter(ProdutoDB.id == id).first()
+        result = await db.execute(select(ProdutoDB).where(ProdutoDB.id == id))
+        produto = result.scalar_one_or_none()
 
         if not produto:
             raise HTTPException(
@@ -138,7 +194,8 @@ async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db
         
         # Verifica se o nome está sendo atualizado e se já existe outro produto com este nome
         if produto_data.nome and produto_data.nome != produto.nome:
-            existing_produto = db.query(ProdutoDB).filter(ProdutoDB.nome == produto_data.nome).first()
+            result = await db.execute(select(ProdutoDB).where(ProdutoDB.nome == produto_data.nome))
+            existing_produto = result.scalar_one_or_none()
             
             if existing_produto:
                 raise HTTPException(
@@ -147,15 +204,13 @@ async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db
 
 
         # armazena uma copia do objeto com os dados atuais, para salvar na auditoria
-        dados_antigos_obj = produto
+        dados_antigos_obj = produto.__dict__.copy()
 
         # Atualiza os campos do produto
         update_data = produto_data.model_dump(exclude_unset=True)
 
-
-        
-        db.commit()
-        db.refresh(produto)
+        await db.commit()
+        await db.refresh(produto)
         
         # dados novos
         dados_novos = {
@@ -166,7 +221,7 @@ async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db
             "foto": produto.foto
         }
 
-        AuditoriaService.registrar_acao(
+        await AuditoriaService.registrar_acao(
             db=db,
             funcionario_id=current_user.id,
             acao="UPDATE",
@@ -182,7 +237,7 @@ async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
              detail=f"Erro ao atualizar produto: {str(e)}"
@@ -190,20 +245,21 @@ async def put_produto(id: int, request: Request, produto_data: ProdutoUpdate, db
 
 @router.delete("/produto/{id}", tags=["Produto"], status_code=200)
 @limiter.limit(get_rate_limit("critical"))
-async def delete_produto(id: int, request: Request, db: Session = Depends(get_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
+async def delete_produto(id: int, request: Request, db: AsyncSession = Depends(get_async_db), current_user: FuncionarioAuth = Depends(require_group([1]))):
     """Remove um produto existente"""
     try:
-        produto = db.query(ProdutoDB).filter(ProdutoDB.id == id).first()
+        result = await db.execute(select(ProdutoDB).where(ProdutoDB.id == id))
+        produto = result.scalar_one_or_none()
 
         if not produto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Produto não encontrado"
                 )
         
-        db.delete(produto)
-        db.commit()
+        await db.delete(produto)
+        await db.commit()
         # Depois de tudo executado e antes do return, registra a ação na auditoria
-        AuditoriaService.registrar_acao(
+        await AuditoriaService.registrar_acao(
             db=db,
             funcionario_id=current_user.id,
             acao="DELETE",
@@ -219,7 +275,7 @@ async def delete_produto(id: int, request: Request, db: Session = Depends(get_db
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao deletar produto: {str(e)}"

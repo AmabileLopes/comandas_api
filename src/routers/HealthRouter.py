@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 import psutil
-from infra.database import get_db
+from infra.database import get_async_db
 from infra.orm.FuncionarioModel import FuncionarioDB
 
 router = APIRouter()
@@ -21,7 +22,7 @@ async def health_check():
 @router.get("/health/database", tags=["Health"], summary="Health check do banco de dados - Verifica conexão com banco de dados - Testa se consegue executar query simples")
 async def database_health():
     try:
-        db = next(get_db())
+        db = next(get_async_db())
         # Query simples para testar conexão
         result = db.execute(text("SELECT 1 as test")).fetchone()
 
@@ -51,7 +52,7 @@ async def database_health():
 @router.get("/health/database/tables", tags=["Health"], summary="Health check das tabelas - Verifica se tabelas críticas existem e têm dados")
 async def database_tables_health():
     try:
-        db = next(get_db())
+        db = next(get_async_db())
         # Verifica tabelas críticas
         checks = {}
         # Verifica tabela funcionário
@@ -153,7 +154,7 @@ async def full_health_check():
 
         # Database Status
         try:
-            db = next(get_db())
+            db = next(get_async_db())
             db.execute(text("SELECT 1"))
             checks["database"] = {"status": "healthy", "message": "Database connected"}
             db.close()
@@ -194,7 +195,7 @@ async def full_health_check():
 async def readiness_check():
     # Verifica se banco está acessível
     try:
-        db = next(get_db())
+        db = next(get_async_db())
         db.execute(text("SELECT 1"))
         db.close()
     except Exception as e:

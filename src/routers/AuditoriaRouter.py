@@ -115,3 +115,5 @@ async def listar_acoes_disponiveis(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao listar ações e recursos: {str(e)}"
         )
+    
+    ##AMABILE VITÓRIA LOPES
